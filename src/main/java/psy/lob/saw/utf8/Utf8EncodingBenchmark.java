@@ -13,6 +13,9 @@ import java.nio.charset.CharsetEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.util.CharsetUtil;
 import org.openjdk.jmh.annotations.GenerateMicroBenchmark;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -32,7 +35,7 @@ public class Utf8EncodingBenchmark {
 	private CustomUtf8Encoder customEncoder;
 
 	// Destination buffer, the slayer
-	private ByteBuffer buffySummers;
+	private ByteBuf buffySummers;
 
 	@Setup
 	public void init() {
@@ -58,9 +61,9 @@ public class Utf8EncodingBenchmark {
 		}
 
 		if (useDirectBuffer) {
-			buffySummers = ByteBuffer.allocateDirect(4096);
+			buffySummers = Unpooled.directBuffer(4096);
 		} else {
-			buffySummers = ByteBuffer.allocate(4096);
+			buffySummers = Unpooled.buffer(4096);
 		}
 		chars = new char[4096];
 		charBuffer = CharBuffer.wrap(chars);
@@ -92,8 +95,8 @@ public class Utf8EncodingBenchmark {
 	public int customEncoder() {
 		int countBytes = 0;
 		for (int stringIndex = 0; stringIndex < strings.size(); stringIndex++) {
-			customEncoder.encodeString(strings.get(stringIndex), buffySummers);
-			countBytes += buffySummers.position();
+			customEncoder.encodeString(strings.get(stringIndex), buffySummers.internalNioBuffer(0, buffySummers.capacity()));
+			countBytes += buffySummers.writerIndex();
 			buffySummers.clear();
 		}
 		return countBytes;
@@ -103,8 +106,8 @@ public class Utf8EncodingBenchmark {
 	public int stringGetBytes() throws UnsupportedEncodingException {
 		int countBytes = 0;
 		for (int stringIndex = 0; stringIndex < strings.size(); stringIndex++) {
-			buffySummers.put(strings.get(stringIndex).getBytes("UTF-8"));
-			countBytes += buffySummers.position();
+			buffySummers.writeBytes(strings.get(stringIndex).getBytes("UTF-8"));
+            countBytes += buffySummers.writerIndex();
 			buffySummers.clear();
 		}
 		return countBytes;
@@ -120,10 +123,22 @@ public class Utf8EncodingBenchmark {
 			charBuffer.position(0);
 			charBuffer.limit(length);
 			encoder.reset();
-			encoder.encode(charBuffer, buffySummers, true);
-			countBytes += buffySummers.position();
+			encoder.encode(charBuffer, buffySummers.internalNioBuffer(0, buffySummers.capacity()), true);
+            countBytes += buffySummers.writerIndex();
 			buffySummers.clear();
 		}
 		return countBytes;
 	}
+
+    @GenerateMicroBenchmark
+    public int byteBufWriteCharSequence() {
+        int countBytes = 0;
+        for (int stringIndex = 0; stringIndex < strings.size(); stringIndex++) {
+            buffySummers.writeCharSequence(strings.get(stringIndex), CharsetUtil.UTF_8);
+            countBytes += buffySummers.writerIndex();
+            buffySummers.clear();
+        }
+        return countBytes;
+    }
+
 }
